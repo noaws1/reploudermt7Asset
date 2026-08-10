@@ -54,7 +54,6 @@ Then edit `.env`:
 OPEN_CLOUD_API_KEY="your_api_key"
 ROBLOX_CREATOR_ID="your_user_id"
 ROBLOX_CREATOR_TYPE="User"
-ROBLOSECURITY="your_cookie"
 DOWNLOAD_CONCURRENCY=8
 ```
 
