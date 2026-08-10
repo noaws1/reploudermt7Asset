@@ -1,0 +1,20 @@
+{
+  "name": "m-spoofer",
+  "version": "1.0.0",
+  "description": "Roblox Asset Reuploader — Credit: mt7s m-project",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": ["roblox", "asset", "reuploader", "spoofer"],
+  "author": "mt7s",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.19.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "form-data": "^4.0.6"
+  }
+}
