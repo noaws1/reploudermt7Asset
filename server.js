@@ -21,6 +21,7 @@ app.use(express.json({ limit: '50mb' }));
 const API_KEY = process.env.OPEN_CLOUD_API_KEY;
 const CREATOR_ID = process.env.ROBLOX_CREATOR_ID || "1";
 const CREATOR_TYPE = process.env.ROBLOX_CREATOR_TYPE || "User";
+const COOKIE = process.env.ROBLOSECURITY || "";
 const DOWNLOAD_CONCURRENCY = parseInt(process.env.DOWNLOAD_CONCURRENCY, 10) || 8;
 
 if (!API_KEY) {
@@ -55,6 +56,9 @@ async function downloadAsset(assetId) {
         'Accept': 'application/octet-stream',
         'Referer': 'https://www.roblox.com/',
     };
+    if (COOKIE) {
+        baseHeaders['Cookie'] = `.ROBLOSECURITY=${COOKIE}`;
+    }
 
     const endpoints = [
         `https://assetdelivery.roblox.com/v1/asset?id=${assetId}`,
