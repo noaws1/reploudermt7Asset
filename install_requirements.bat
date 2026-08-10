@@ -2,9 +2,8 @@
 echo =========================================
 echo Installing m-spoofer Requirements...
 echo =========================================
-npm install
+call npm install
 echo.
 echo =========================================
-echo Installation complete! You can now close this window.
-echo =========================================
-pause
+echo Installation complete! 
+set /p DUMMY="Press ENTER to close..."
