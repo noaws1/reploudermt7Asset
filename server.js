@@ -209,14 +209,56 @@ async function processReplaceJob(job, ids, type, cType, cId) {
 
     const downloads = await asyncPool(DOWNLOAD_CONCURRENCY, ids, async (oldId) => {
         try {
+            let detectedType = type;
+            let skip = false;
+            let skipReason = "";
+            try {
+                const detailsRes = await axios.get(`https://economy.roblox.com/v2/assets/${oldId}/details`, {
+                    headers: { 'User-Agent': 'Roblox/WinInet' },
+                    validateStatus: () => true
+                });
+                if (detailsRes.status === 200 && detailsRes.data) {
+                    if (detailsRes.data.AssetTypeId) {
+                        const typeId = detailsRes.data.AssetTypeId;
+                        if (typeId === 3) detectedType = "Audio";
+                        else if (typeId === 4) detectedType = "Mesh";
+                        else if (typeId === 24) detectedType = "Animation";
+                        else if (typeId === 1 || typeId === 13) detectedType = "Image";
+                    }
+                    
+                    const creator = detailsRes.data.Creator;
+                    if (creator) {
+                        if (creator.Id === 1 || creator.Name === 'Roblox') {
+                            skip = true;
+                            skipReason = 'Made by Roblox';
+                        } else {
+                            const effectiveId = cId || CREATOR_ID;
+                            const effectiveType = cType || CREATOR_TYPE;
+                            if (effectiveId && creator.CreatorTargetId && creator.CreatorTargetId.toString() === effectiveId.toString() && creator.CreatorType === effectiveType) {
+                                skip = true;
+                                skipReason = 'Already owned by target creator';
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                // Ignore API check errors and fallback to requested type
+            }
+
+            if (skip) {
+                console.log(`  [SKIPPED] ${oldId}: ${skipReason}`);
+                return { oldId, ok: true, skipped: true, reason: skipReason, detectedType };
+            }
+
             const buffer = await downloadAsset(oldId);
-            console.log(`  [DL OK] ${oldId} (${buffer.length} bytes)`);
-            return { oldId, ok: true, buffer };
+            console.log(`  [DL OK] ${oldId} (${buffer.length} bytes) [Auto-Detected: ${detectedType}]`);
+            return { oldId, ok: true, buffer, detectedType };
         } catch (error) {
             console.log(`  [DL FAILED] ${oldId}: ${error.message}`);
             return { oldId, ok: false, error: error.message };
         }
     });
+
     const downloadById = new Map(downloads.map(d => [d.oldId, d]));
 
     const uploadType = (type === "Image") ? "Decal" : type;
@@ -229,6 +271,9 @@ async function processReplaceJob(job, ids, type, cType, cId) {
 
         if (!dl.ok) {
             job.results[oldId] = { status: 'Failed', error: dl.error };
+        } else if (dl.skipped) {
+            job.results[oldId] = { status: 'Success', newId: parseInt(oldId, 10) };
+            console.log(`  SUCCESS (SKIPPED): ${oldId} -> ${oldId} (${dl.reason})`);
         } else {
             try {
                 const newId = await uploadAssetOpenCloud(dl.buffer, oldId, uploadType, config.filename, config.contentType, cType, cId);
