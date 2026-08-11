@@ -95,10 +95,10 @@ async function downloadAsset(assetId) {
                 httpsAgent: keepAliveAgent,
                 timeout: 15000,
             });
-            
+
             const buffer = response.data;
             const text = buffer.toString('utf8');
-            
+
             if (text.includes('<roblox') && text.includes('<url>')) {
                 const match = text.match(/id=(\d+)/) || text.match(/rbxassetid:\/\/(\d+)/);
                 if (match && match[1]) {
@@ -106,7 +106,7 @@ async function downloadAsset(assetId) {
                     return downloadAsset(match[1]);
                 }
             }
-            
+
             return buffer;
         } catch (error) {
             lastError = error;
@@ -198,10 +198,10 @@ async function uploadAssetOpenCloud(buffer, oldId, assetType, filename, contentT
 
 const ASSET_CONFIG = {
     Animation: { filename: 'animation.rbxm', contentType: 'model/x-rbxm' },
-    Mesh:      { filename: 'mesh.mesh',       contentType: 'model/x-file-mesh-data' },
-    Audio:     { filename: 'audio.ogg',        contentType: 'audio/ogg' },
-    Decal:     { filename: 'image.png',        contentType: 'image/png' },
-    Image:     { filename: 'image.png',        contentType: 'image/png' },
+    Mesh: { filename: 'mesh.mesh', contentType: 'model/x-file-mesh-data' },
+    Audio: { filename: 'audio.ogg', contentType: 'audio/ogg' },
+    Decal: { filename: 'image.png', contentType: 'image/png' },
+    Image: { filename: 'image.png', contentType: 'image/png' },
 };
 
 async function processReplaceJob(job, ids, type, cType, cId) {
@@ -260,6 +260,41 @@ async function processReplaceJob(job, ids, type, cType, cId) {
     cleanupJob(job.id);
 }
 
+app.get('/api/asset-type/:id', async (req, res) => {
+    try {
+        const assetId = req.params.id;
+        let typeId = 0;
+
+        const detailsRes = await axios.get(`https://economy.roblox.com/v2/assets/${assetId}/details`, {
+            headers: { 'User-Agent': 'Roblox/WinInet' },
+            validateStatus: () => true
+        });
+        
+        if (detailsRes.status === 200 && detailsRes.data && detailsRes.data.AssetTypeId) {
+            typeId = detailsRes.data.AssetTypeId;
+        } else {
+            try {
+                const buffer = await downloadAsset(assetId);
+                const str = buffer.toString('utf8', 0, 500);
+                if (str.includes('<Item class="Animation"') || str.includes('<Item class="KeyframeSequence"')) {
+                    typeId = 24;
+                } else if (str.includes('<Item class="SpecialMesh"') || str.includes('version 1.00') || str.includes('version 2.00')) {
+                    typeId = 4;
+                } else if (buffer.length > 4 && buffer.slice(0, 4).toString('ascii') === 'OggS') {
+                    typeId = 3;
+                } else if (str.includes('PNG') || str.includes('JFIF') || str.includes('<Item class="Decal"')) {
+                    typeId = 1;
+                }
+            } catch(e) {
+                // Ignore download errors for type check
+            }
+        }
+        res.json({ assetTypeId: typeId });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post('/api/replace', (req, res) => {
     const { ids, assetType, creatorType, creatorId } = req.body;
     const type = assetType || "Animation";
@@ -317,4 +352,4 @@ server.on('error', (err) => {
 });
 
 // Prevent Node.js from exiting immediately
-setInterval(() => {}, 1000 * 60 * 60);
+setInterval(() => { }, 1000 * 60 * 60);
