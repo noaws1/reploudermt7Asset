@@ -22,7 +22,8 @@ const API_KEY = process.env.OPEN_CLOUD_API_KEY;
 const CREATOR_ID = process.env.ROBLOX_CREATOR_ID || "1";
 const CREATOR_TYPE = process.env.ROBLOX_CREATOR_TYPE || "User";
 const COOKIE = process.env.ROBLOSECURITY || "";
-const DOWNLOAD_CONCURRENCY = parseInt(process.env.DOWNLOAD_CONCURRENCY, 10) || 8;
+const DOWNLOAD_CONCURRENCY = parseInt(process.env.DOWNLOAD_CONCURRENCY, 10) || 50;
+const UPLOAD_CONCURRENCY = parseInt(process.env.UPLOAD_CONCURRENCY, 10) || 15;
 
 if (!API_KEY) {
     console.error("WARNING: OPEN_CLOUD_API_KEY is not set in .env!");
@@ -235,6 +236,10 @@ async function processReplaceJob(job, ids, type, cType, cId) {
                         else if (typeId === 1 || typeId === 13) detectedType = "Image";
                     }
                     
+                    if (detectedType !== type) {
+                        return { oldId, ok: true, ignored: true, reason: `Asset is ${detectedType}, expected ${type}`, detectedType };
+                    }
+                    
                     const creator = detailsRes.data.Creator;
                     if (creator) {
                         if (creator.Id === 1 || creator.Name === 'Roblox') {
@@ -273,13 +278,17 @@ async function processReplaceJob(job, ids, type, cType, cId) {
     const uploadType = (type === "Image") ? "Decal" : type;
     const config = ASSET_CONFIG[type] || ASSET_CONFIG.Animation;
 
-    for (let i = 0; i < ids.length; i++) {
-        const oldId = ids[i];
+    console.log(`\n-- Uploading ${ids.length} asset(s), up to ${UPLOAD_CONCURRENCY} at a time --`);
+    let processedCount = 0;
+
+    await asyncPool(UPLOAD_CONCURRENCY, ids, async (oldId) => {
         const dl = downloadById.get(oldId);
-        console.log(`\n[${i + 1}/${ids.length}] Processing ${type} ID: ${oldId}`);
 
         if (!dl.ok) {
             job.results[oldId] = { status: 'Failed', error: dl.error };
+        } else if (dl.ignored) {
+            job.results[oldId] = { status: 'Ignored', reason: dl.reason };
+            console.log(`  IGNORED: ${oldId} (${dl.reason})`);
         } else if (dl.skipped) {
             job.results[oldId] = { status: 'Success', newId: parseInt(oldId, 10) };
             console.log(`  SUCCESS (SKIPPED): ${oldId} -> ${oldId} (${dl.reason})`);
@@ -289,7 +298,7 @@ async function processReplaceJob(job, ids, type, cType, cId) {
                 console.log(`  SUCCESS: ${oldId} -> ${newId}`);
                 job.results[oldId] = { status: 'Success', newId: parseInt(newId, 10) };
             } catch (error) {
-                console.error(`  FAILED: ${error.message}`);
+                console.error(`  FAILED: ${oldId} - ${error.message}`);
                 if (error.response && error.response.data) {
                     let errData = error.response.data;
                     if (errData instanceof Buffer || errData instanceof ArrayBuffer) {
@@ -305,10 +314,9 @@ async function processReplaceJob(job, ids, type, cType, cId) {
             }
         }
 
-        if (i < ids.length - 1) {
-            await new Promise(r => setTimeout(r, 2000));
-        }
-    }
+        processedCount++;
+        console.log(`  [Progress] ${processedCount}/${ids.length} finished.`);
+    });
 
     job.done = true;
     cleanupJob(job.id);
