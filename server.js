@@ -99,6 +99,15 @@ async function downloadAsset(assetId) {
             const buffer = response.data;
             const text = buffer.toString('utf8');
 
+            if (buffer.length < 500) {
+                if (text.startsWith('{"errors":') || text.includes('User is not authorized') || text.includes('not authorized to access Asset')) {
+                    throw new Error("Asset is private, moderated, or deleted (Not Authorized)");
+                }
+                if (text.startsWith('<Error><Code>AccessDenied</Code>')) {
+                    throw new Error("Asset is private or deleted (S3 Access Denied)");
+                }
+            }
+
             if (text.includes('<roblox') && text.includes('<url>')) {
                 const match = text.match(/id=(\d+)/) || text.match(/rbxassetid:\/\/(\d+)/);
                 if (match && match[1]) {
