@@ -299,10 +299,22 @@ app.get('/api/replace/status/:jobId', (req, res) => {
 });
 
 const PORT = 3000;
-app.listen(PORT, '127.0.0.1', () => {
+const server = app.listen(PORT, '127.0.0.1', () => {
     console.log(`m-spoofer Server running on http://127.0.0.1:${PORT}`);
     console.log(`Credit: mt7s m-project`);
     console.log(`Supported: Animation, Mesh, Audio, Image`);
     console.log(`Parallel downloads: ${DOWNLOAD_CONCURRENCY} at a time`);
     console.log(`Waiting for plugin requests...`);
 });
+
+server.on('error', (err) => {
+    console.error('\n[ERROR] Server failed to start:', err.message);
+    if (err.code === 'EADDRINUSE') {
+        console.error(`=> Port ${PORT} is already in use by another program!`);
+        console.error(`=> Please close any other running instances of the server before starting a new one.`);
+    }
+    process.exit(1);
+});
+
+// Prevent Node.js from exiting immediately
+setInterval(() => {}, 1000 * 60 * 60);
