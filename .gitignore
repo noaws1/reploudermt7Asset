@@ -2,3 +2,4 @@ node_modules/
 .env
 temp_mesh.mesh
 test_upload.js
+downloads/

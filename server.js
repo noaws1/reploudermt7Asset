@@ -7,11 +7,240 @@ const FormData = require('form-data');
 const https = require('https');
 const crypto = require('crypto');
 
+// ===================================================
+// Terminal Colors
+// ===================================================
+const C = {
+    reset: '\x1b[0m',
+    bold: '\x1b[1m',
+    dim: '\x1b[2m',
+    red: '\x1b[91m',
+    redDim: '\x1b[31m',
+    green: '\x1b[92m',
+    greenDim: '\x1b[32m',
+    blue: '\x1b[94m',
+    cyan: '\x1b[96m',
+    cyanDim: '\x1b[36m',
+    magenta: '\x1b[95m',
+    yellow: '\x1b[93m',
+    orange: '\x1b[33m',
+    white: '\x1b[97m',
+    gray: '\x1b[90m',
+    grayLight: '\x1b[37m',
+};
+
+// ===================================================
+// 3D "M" Rotation Frames (ASCII-safe block art)
+// Each frame is exactly 14 chars wide, 7 lines tall
+// ===================================================
+const M_FRAMES = [
+    [ // Front
+        ' ##       ## ',
+        ' ###     ### ',
+        ' ####   #### ',
+        ' ## ## ## ## ',
+        ' ##  ###  ## ',
+        ' ##   #   ## ',
+        ' ##       ## ',
+    ],
+    [ // Turn 1
+        '  ##     ##  ',
+        '  ###   ###  ',
+        '  #### ####  ',
+        '  ## ### ##  ',
+        '  ##  #  ##  ',
+        '  ##     ##  ',
+        '  ##     ##  ',
+    ],
+    [ // Turn 2
+        '   ##   ##   ',
+        '   ### ###   ',
+        '   #######   ',
+        '   ## # ##   ',
+        '   ##   ##   ',
+        '   ##   ##   ',
+        '   ##   ##   ',
+    ],
+    [ // Turn 3
+        '    ## ##    ',
+        '    #####    ',
+        '    #####    ',
+        '    ## ##    ',
+        '    ## ##    ',
+        '    ## ##    ',
+        '    ## ##    ',
+    ],
+    [ // Edge
+        '     ###     ',
+        '     ###     ',
+        '     ###     ',
+        '     ###     ',
+        '     ###     ',
+        '     ###     ',
+        '     ###     ',
+    ],
+    [ // Turn 3 mirror
+        '    ## ##    ',
+        '    #####    ',
+        '    #####    ',
+        '    ## ##    ',
+        '    ## ##    ',
+        '    ## ##    ',
+        '    ## ##    ',
+    ],
+    [ // Turn 2 mirror
+        '   ##   ##   ',
+        '   ### ###   ',
+        '   #######   ',
+        '   ## # ##   ',
+        '   ##   ##   ',
+        '   ##   ##   ',
+        '   ##   ##   ',
+    ],
+    [ // Turn 1 mirror
+        '  ##     ##  ',
+        '  ###   ###  ',
+        '  #### ####  ',
+        '  ## ### ##  ',
+        '  ##  #  ##  ',
+        '  ##     ##  ',
+        '  ##     ##  ',
+    ],
+];
+
+const PALETTES = [
+    [C.blue, C.blue, C.cyan, C.cyan, C.white, C.cyan, C.blue],
+    [C.cyan, C.cyan, C.white, C.white, C.cyan, C.white, C.cyan],
+    [C.magenta, C.magenta, C.cyan, C.cyan, C.blue, C.cyan, C.magenta],
+];
+
+const LINES_PER_FRAME = 12;
+
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function playMAnimation() {
+    const total = M_FRAMES.length;
+
+    process.stdout.write('\x1b[?25l'); // hide cursor
+    for (let i = 0; i < LINES_PER_FRAME; i++) process.stdout.write('\n');
+
+    for (let rot = 0; rot < 3; rot++) {
+        const pal = PALETTES[rot % PALETTES.length];
+        for (let f = 0; f < total; f++) {
+            process.stdout.write(`\x1b[${LINES_PER_FRAME}A`);
+            process.stdout.write('\n\n');
+            const frame = M_FRAMES[f];
+            for (let r = 0; r < frame.length; r++) {
+                process.stdout.write(`        ${pal[r]}${C.bold}${frame[r]}${C.reset}\x1b[K\n`);
+            }
+            const dots = '.'.repeat((rot * total + f) % 4);
+            process.stdout.write(`\n        ${C.gray}Loading${dots.padEnd(4)}${C.reset}\x1b[K\n`);
+            process.stdout.write('\x1b[K\n');
+            await sleep(70);
+        }
+    }
+
+    process.stdout.write('\x1b[?25h'); // show cursor
+
+    // Final splash
+    process.stdout.write(`\x1b[${LINES_PER_FRAME}A`);
+    process.stdout.write('\n\n');
+    const pal = PALETTES[0];
+    for (let r = 0; r < M_FRAMES[0].length; r++) {
+        process.stdout.write(`        ${pal[r]}${C.bold}${M_FRAMES[0][r]}${C.reset}\x1b[K\n`);
+    }
+    process.stdout.write('\x1b[K\n');
+
+    // Branding box
+    const W = 42;
+    const line = '-'.repeat(W);
+    console.log(`  ${C.cyan}${C.bold}+${line}+${C.reset}`);
+    console.log(`  ${C.cyan}|${C.reset}  ${C.white}${C.bold}m-spoofer${C.reset} ${C.grayLight}Server${C.reset} ${C.cyan}v1.0${C.reset}                  ${C.cyan}|${C.reset}`);
+    console.log(`  ${C.cyan}|${C.reset}  ${C.gray}Credit: mt7s m-project${C.reset}                  ${C.cyan}|${C.reset}`);
+    console.log(`  ${C.cyan}${C.bold}+${line}+${C.reset}`);
+    console.log('\x1b[K');
+}
+
+// ===================================================
+// Logging Helpers
+// ===================================================
+
+function logSuccess(msg) {
+    console.log(`  ${C.green}${C.bold} + ${C.reset}${C.green}${msg}${C.reset}`);
+}
+
+function logError(msg) {
+    console.log(`  ${C.red}${C.bold} - ${C.reset}${C.red}${msg}${C.reset}`);
+}
+
+function logErrorDetail(msg) {
+    console.log(`  ${C.redDim}     > ${C.dim}${msg}${C.reset}`);
+}
+
+function logInfo(msg) {
+    console.log(`  ${C.cyan}${C.bold} i ${C.reset}${C.white}${msg}${C.reset}`);
+}
+
+function logWarn(msg) {
+    console.log(`  ${C.yellow}${C.bold} ! ${C.reset}${C.yellow}${msg}${C.reset}`);
+}
+
+function logDim(msg) {
+    console.log(`  ${C.gray}   ${msg}${C.reset}`);
+}
+
+function logProgress(current, total, successCount, failedCount) {
+    const W = 30;
+    const pct = total > 0 ? current / total : 0;
+    const filled = Math.round(W * pct);
+    const empty = W - filled;
+    const bar = `${C.green}${'='.repeat(filled)}${C.gray}${'.'.repeat(empty)}${C.reset}`;
+    const pctStr = `${Math.round(pct * 100)}%`.padStart(4);
+    process.stdout.write(`\r  ${C.gray}   [${C.reset}${bar}${C.gray}]${C.reset} ${C.white}${C.bold}${pctStr}${C.reset} ${C.gray}|${C.reset} ${C.green}${successCount} ok${C.reset} ${C.red}${failedCount} fail${C.reset} ${C.gray}(${current}/${total})${C.reset}   `);
+}
+
+function categorizeError(errorMessage) {
+    const msg = (errorMessage || '').toLowerCase();
+    if (msg.includes('not authorized') || msg.includes('unauthorized') || msg.includes('forbidden')) {
+        return { icon: 'LOCKED', reason: 'No Permission', color: C.orange };
+    }
+    if (msg.includes('copylocked') || msg.includes('inaccessible')) {
+        return { icon: 'LOCKED', reason: 'Copylocked', color: C.orange };
+    }
+    if (msg.includes('not found') || msg.includes('was not found')) {
+        return { icon: '404', reason: 'Not Found', color: C.yellow };
+    }
+    if (msg.includes('archived')) {
+        return { icon: 'ARCH', reason: 'Archived', color: C.grayLight };
+    }
+    if (msg.includes('invalid') || msg.includes('content is invalid')) {
+        return { icon: 'BAD', reason: 'Invalid Content', color: C.yellow };
+    }
+    if (msg.includes('timeout') || msg.includes('timed out')) {
+        return { icon: 'TIME', reason: 'Timeout', color: C.orange };
+    }
+    if (msg.includes('rate limit') || msg.includes('429') || msg.includes('too many')) {
+        return { icon: 'RATE', reason: 'Rate Limited', color: C.red };
+    }
+    if (msg.includes('cloudflare')) {
+        return { icon: 'CF', reason: 'Cloudflare Block', color: C.orange };
+    }
+    if (msg.includes('socket hang up') || msg.includes('econnreset') || msg.includes('econnaborted')) {
+        return { icon: 'NET', reason: 'Connection Lost', color: C.orange };
+    }
+    return { icon: 'ERR', reason: 'Error', color: C.red };
+}
+
 const app = express();
-const keepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
+const keepAliveAgent = new https.Agent({ 
+    keepAlive: true, 
+    maxSockets: 200, 
+    maxFreeSockets: 50, 
+    timeout: 60000 
+});
 
 app.use((req, res, next) => {
-    console.log(`\n[${new Date().toISOString()}] Incoming ${req.method} request to ${req.url}`);
+    logDim(`[${new Date().toISOString()}] ${req.method} -> ${req.url}`);
     next();
 });
 
@@ -22,8 +251,31 @@ const API_KEY = process.env.OPEN_CLOUD_API_KEY;
 const CREATOR_ID = process.env.ROBLOX_CREATOR_ID || "1";
 const CREATOR_TYPE = process.env.ROBLOX_CREATOR_TYPE || "User";
 const COOKIE = process.env.ROBLOSECURITY || "";
-const DOWNLOAD_CONCURRENCY = parseInt(process.env.DOWNLOAD_CONCURRENCY, 10) || 50;
-const UPLOAD_CONCURRENCY = parseInt(process.env.UPLOAD_CONCURRENCY, 10) || 15;
+const DOWNLOAD_CONCURRENCY = parseInt(process.env.DOWNLOAD_CONCURRENCY, 10) || 15;
+
+class Semaphore {
+    constructor(max) {
+        this.max = max;
+        this.current = 0;
+        this.queue = [];
+    }
+    async acquire() {
+        if (this.current < this.max) {
+            this.current++;
+            return;
+        }
+        return new Promise(resolve => this.queue.push(resolve));
+    }
+    release() {
+        this.current--;
+        if (this.queue.length > 0) {
+            this.current++;
+            const resolve = this.queue.shift();
+            resolve();
+        }
+    }
+}
+const globalSemaphore = new Semaphore(DOWNLOAD_CONCURRENCY);
 
 if (!API_KEY) {
     console.error("WARNING: OPEN_CLOUD_API_KEY is not set in .env!");
@@ -35,23 +287,30 @@ function cleanupJob(jobId) {
     setTimeout(() => jobs.delete(jobId), 10 * 60 * 1000);
 }
 
-async function asyncPool(limit, items, iteratorFn) {
-    const results = new Array(items.length);
-    let cursor = 0;
 
-    async function worker() {
-        while (cursor < items.length) {
-            const index = cursor++;
-            results[index] = await iteratorFn(items[index], index);
+
+async function withExponentialBackoff(operationName, maxRetries, baseDelayMs, fn) {
+    let attempt = 0;
+    while (attempt < maxRetries) {
+        try {
+            return await fn(attempt);
+        } catch (error) {
+            const isRateLimit = error.response && error.response.status === 429;
+            const isNetworkError = !error.response || error.code === 'ECONNABORTED' || error.code === 'ECONNRESET' || error.code === 'ENOTFOUND' || error.message.includes('timeout') || error.message.includes('socket hang up');
+            
+            if ((isRateLimit || isNetworkError) && attempt < maxRetries - 1) {
+                attempt++;
+                const delay = (baseDelayMs * Math.pow(1.5, attempt - 1)) + (Math.random() * 1000);
+                logWarn(`${operationName} retry ${attempt}/${maxRetries - 1} — ${error.message} (waiting ${Math.round(delay)}ms)`);
+                await new Promise(r => setTimeout(r, delay));
+            } else {
+                throw error;
+            }
         }
     }
-
-    const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
-    await Promise.all(workers);
-    return results;
 }
 
-async function downloadAsset(assetId) {
+async function downloadAsset(assetId, depth = 0) {
     const baseHeaders = {
         'User-Agent': 'Roblox/WinInet',
         'Accept': 'application/octet-stream',
@@ -66,65 +325,73 @@ async function downloadAsset(assetId) {
         `https://assetdelivery.roblox.com/v1/assetId/${assetId}`,
     ];
 
-    let lastError = null;
-    for (const url of endpoints) {
-        try {
-            if (url.includes('/v1/assetId/')) {
-                const metaResponse = await axios.get(url, {
-                    headers: baseHeaders,
-                    maxRedirects: 0,
-                    validateStatus: (status) => status >= 200 && status < 400,
-                    httpsAgent: keepAliveAgent,
-                    timeout: 15000,
-                });
-                const location = metaResponse.data?.location;
-                if (location) {
-                    const dataResponse = await axios.get(location, {
-                        responseType: 'arraybuffer',
+    return await withExponentialBackoff(`Download ${assetId}`, 3, 1500, async () => {
+        let lastError = null;
+        for (const url of endpoints) {
+            try {
+                if (url.includes('/v1/assetId/')) {
+                    const metaResponse = await axios.get(url, {
                         headers: baseHeaders,
+                        maxRedirects: 0,
+                        validateStatus: (status) => status >= 200 && status < 400,
                         httpsAgent: keepAliveAgent,
                         timeout: 15000,
                     });
-                    return dataResponse.data;
+                    const location = metaResponse.data?.location;
+                    if (location) {
+                        const dataResponse = await axios.get(location, {
+                            responseType: 'arraybuffer',
+                            headers: baseHeaders,
+                            httpsAgent: keepAliveAgent,
+                            timeout: 15000,
+                        });
+                        return dataResponse.data;
+                    }
                 }
+
+                const response = await axios.get(url, {
+                    responseType: 'arraybuffer',
+                    headers: baseHeaders,
+                    maxRedirects: 10,
+                    httpsAgent: keepAliveAgent,
+                    timeout: 15000,
+                });
+                
+                const buffer = response.data;
+                const text = buffer.toString('utf8');
+                
+                if (text.trim().startsWith('{') && text.includes('"errors"')) {
+                    let errorMsg = "Asset is copylocked or inaccessible";
+                    try {
+                        const parsed = JSON.parse(text);
+                        if (parsed.errors && parsed.errors[0] && parsed.errors[0].message) {
+                            errorMsg = parsed.errors[0].message;
+                        }
+                    } catch(e) {}
+                    const err = new Error(`Download failed: ${errorMsg}`);
+                    err.isAuthError = true;
+                    throw err;
+                }
+                
+                if (text.includes('<roblox') && text.includes('<url>')) {
+                    const match = text.match(/id=(\d+)/) || text.match(/rbxassetid:\/\/(\d+)/);
+                    if (match && match[1]) {
+                        console.log(`  ${C.gray}  ↳ Redirect: Asset ${assetId} → image #${match[1]}${C.reset}`);
+                        if (depth > 5) throw new Error('Too many redirects');
+                        return downloadAsset(match[1], depth + 1);
+                    }
+                }
+                
+                return buffer;
+            } catch (error) {
+                if (error.isAuthError || error.response?.status === 401 || error.response?.status === 403 || error.response?.status === 404) {
+                    throw error; 
+                }
+                lastError = error;
             }
-
-            const response = await axios.get(url, {
-                responseType: 'arraybuffer',
-                headers: baseHeaders,
-                maxRedirects: 10,
-                httpsAgent: keepAliveAgent,
-                timeout: 15000,
-            });
-
-            const buffer = response.data;
-            const text = buffer.toString('utf8');
-
-            if (buffer.length < 500) {
-                if (text.startsWith('{"errors":') || text.includes('User is not authorized') || text.includes('not authorized to access Asset')) {
-                    throw new Error("Asset is private, moderated, or deleted (Not Authorized)");
-                }
-                if (text.startsWith('<Error><Code>AccessDenied</Code>')) {
-                    throw new Error("Asset is private or deleted (S3 Access Denied)");
-                }
-            }
-
-            if (text.includes('<roblox') && text.includes('<url>')) {
-                const match = text.match(/id=(\d+)/) || text.match(/rbxassetid:\/\/(\d+)/);
-                if (match && match[1]) {
-                    console.log(`  [Redirect] Asset ${assetId} is an XML Decal. Redirecting to real image ID: ${match[1]}`);
-                    return downloadAsset(match[1]);
-                }
-            }
-
-            return buffer;
-        } catch (error) {
-            lastError = error;
-            console.log(`  Download attempt failed for ${url}: ${error.message}`);
         }
-    }
-
-    throw lastError || new Error(`Failed to download asset ${assetId} from all endpoints.`);
+        throw lastError || new Error(`Failed to download asset ${assetId} from all endpoints.`);
+    });
 }
 
 async function pollOperation(operationPath) {
@@ -134,9 +401,12 @@ async function pollOperation(operationPath) {
         await new Promise(r => setTimeout(r, 2000));
 
         try {
-            const response = await axios.get(operationUrl, {
-                headers: { 'x-api-key': API_KEY },
-                httpsAgent: keepAliveAgent,
+            const response = await withExponentialBackoff(`Poll ${operationPath}`, 3, 2000, async () => {
+                return await axios.get(operationUrl, {
+                    headers: { 'x-api-key': API_KEY },
+                    httpsAgent: keepAliveAgent,
+                    timeout: 20000,
+                });
             });
 
             const data = response.data;
@@ -150,7 +420,7 @@ async function pollOperation(operationPath) {
             console.log(`  ... polling ${operationPath} (in progress)`);
         } catch (error) {
             if (error.response) {
-                console.error(`  Poll error:`, JSON.stringify(error.response.data));
+                logErrorDetail(`Poll error: ${JSON.stringify(error.response.data)}`);
             }
             throw error;
         }
@@ -186,12 +456,15 @@ async function uploadAssetOpenCloud(buffer, oldId, assetType, filename, contentT
     formData.append('request', JSON.stringify(requestJson));
     formData.append('fileContent', buffer, { filename, contentType });
 
-    const uploadResponse = await axios.post(uploadUrl, formData, {
-        headers: {
-            'x-api-key': API_KEY,
-            ...formData.getHeaders()
-        },
-        httpsAgent: keepAliveAgent,
+    const uploadResponse = await withExponentialBackoff(`Upload ${oldId}`, 5, 3000, async () => {
+        return await axios.post(uploadUrl, formData, {
+            headers: {
+                'x-api-key': API_KEY,
+                ...formData.getHeaders()
+            },
+            httpsAgent: keepAliveAgent,
+            timeout: 60000,
+        });
     });
 
     const operationPath = uploadResponse.data.path;
@@ -202,160 +475,104 @@ async function uploadAssetOpenCloud(buffer, oldId, assetType, filename, contentT
         throw new Error(`No operation path in response: ${JSON.stringify(uploadResponse.data)}`);
     }
 
-    console.log(`  Upload initiated. Polling... (${operationPath})`);
+    logDim(`Upload initiated. Polling... (${operationPath})`);
     return await pollOperation(operationPath);
 }
 
 const ASSET_CONFIG = {
     Animation: { filename: 'animation.rbxm', contentType: 'model/x-rbxm' },
-    Mesh: { filename: 'mesh.mesh', contentType: 'model/x-file-mesh-data' },
-    Audio: { filename: 'audio.ogg', contentType: 'audio/ogg' },
-    Decal: { filename: 'image.png', contentType: 'image/png' },
-    Image: { filename: 'image.png', contentType: 'image/png' },
+    Mesh:      { filename: 'mesh.mesh',       contentType: 'model/x-file-mesh-data' },
+    Audio:     { filename: 'audio.ogg',        contentType: 'audio/ogg' },
+    Decal:     { filename: 'image.png',        contentType: 'image/png' },
+    Image:     { filename: 'image.png',        contentType: 'image/png' },
 };
 
+
+
 async function processReplaceJob(job, ids, type, cType, cId) {
-    console.log(`\n-- Downloading ${ids.length} asset(s), up to ${DOWNLOAD_CONCURRENCY} at a time --`);
-
-    const downloads = await asyncPool(DOWNLOAD_CONCURRENCY, ids, async (oldId) => {
-        try {
-            let detectedType = type;
-            let skip = false;
-            let skipReason = "";
-            try {
-                const detailsRes = await axios.get(`https://economy.roblox.com/v2/assets/${oldId}/details`, {
-                    headers: { 'User-Agent': 'Roblox/WinInet' },
-                    validateStatus: () => true
-                });
-                if (detailsRes.status === 200 && detailsRes.data) {
-                    if (detailsRes.data.AssetTypeId) {
-                        const typeId = detailsRes.data.AssetTypeId;
-                        if (typeId === 3) detectedType = "Audio";
-                        else if (typeId === 4) detectedType = "Mesh";
-                        else if (typeId === 24) detectedType = "Animation";
-                        else if (typeId === 1 || typeId === 13) detectedType = "Image";
-                    }
-                    
-                    if (detectedType !== type) {
-                        return { oldId, ok: true, ignored: true, reason: `Asset is ${detectedType}, expected ${type}`, detectedType };
-                    }
-                    
-                    const creator = detailsRes.data.Creator;
-                    if (creator) {
-                        if (creator.Id === 1 || creator.Name === 'Roblox') {
-                            skip = true;
-                            skipReason = 'Made by Roblox';
-                        } else {
-                            const effectiveId = cId || CREATOR_ID;
-                            const effectiveType = cType || CREATOR_TYPE;
-                            if (effectiveId && creator.CreatorTargetId && creator.CreatorTargetId.toString() === effectiveId.toString() && creator.CreatorType === effectiveType) {
-                                skip = true;
-                                skipReason = 'Already owned by target creator';
-                            }
-                        }
-                    }
-                }
-            } catch (err) {
-                // Ignore API check errors and fallback to requested type
-            }
-
-            if (skip) {
-                console.log(`  [SKIPPED] ${oldId}: ${skipReason}`);
-                return { oldId, ok: true, skipped: true, reason: skipReason, detectedType };
-            }
-
-            const buffer = await downloadAsset(oldId);
-            console.log(`  [DL OK] ${oldId} (${buffer.length} bytes) [Auto-Detected: ${detectedType}]`);
-            return { oldId, ok: true, buffer, detectedType };
-        } catch (error) {
-            console.log(`  [DL FAILED] ${oldId}: ${error.message}`);
-            return { oldId, ok: false, error: error.message };
-        }
-    });
-
-    const downloadById = new Map(downloads.map(d => [d.oldId, d]));
+    console.log('');
+    console.log(`  ${C.cyan}${C.bold}+----------------------------------------------+${C.reset}`);
+    console.log(`  ${C.cyan}|${C.reset} ${C.white}${C.bold}${type}${C.reset}${C.white} Reupload | ${C.bold}${ids.length}${C.reset}${C.white} assets | Workers: ${C.bold}${DOWNLOAD_CONCURRENCY}${C.reset}       ${C.cyan}|${C.reset}`);
+    console.log(`  ${C.cyan}${C.bold}+----------------------------------------------+${C.reset}`);
+    console.log('');
 
     const uploadType = (type === "Image") ? "Decal" : type;
     const config = ASSET_CONFIG[type] || ASSET_CONFIG.Animation;
+    let successCount = 0;
+    let failedCount = 0;
+    let processed = 0;
+    const startTime = Date.now();
+    const errorSummary = {};
 
-    console.log(`\n-- Uploading ${ids.length} asset(s), up to ${UPLOAD_CONCURRENCY} at a time --`);
-    let processedCount = 0;
+    await Promise.all(ids.map(async (oldId) => {
+        await globalSemaphore.acquire();
+        try {
+            const buffer = await downloadAsset(oldId);
 
-    await asyncPool(UPLOAD_CONCURRENCY, ids, async (oldId) => {
-        const dl = downloadById.get(oldId);
+            const textPreview = buffer.toString('utf8', 0, Math.min(buffer.length, 5000));
+            if (textPreview.includes('cf-chl-gen') || textPreview.includes('Cloudflare') || textPreview.includes('cf-browser-verification')) {
+                throw new Error('Blocked by Cloudflare challenge.');
+            }
 
-        if (!dl.ok) {
-            job.results[oldId] = { status: 'Failed', error: dl.error };
-        } else if (dl.ignored) {
-            job.results[oldId] = { status: 'Ignored', reason: dl.reason };
-            console.log(`  IGNORED: ${oldId} (${dl.reason})`);
-        } else if (dl.skipped) {
-            job.results[oldId] = { status: 'Success', newId: parseInt(oldId, 10) };
-            console.log(`  SUCCESS (SKIPPED): ${oldId} -> ${oldId} (${dl.reason})`);
-        } else {
             try {
-                const newId = await uploadAssetOpenCloud(dl.buffer, oldId, uploadType, config.filename, config.contentType, cType, cId);
-                console.log(`  SUCCESS: ${oldId} -> ${newId}`);
+                const newId = await uploadAssetOpenCloud(buffer, oldId, uploadType, config.filename, config.contentType, cType, cId);
+                successCount++;
+                processed++;
+                logSuccess(`${oldId} -> ${C.bold}${newId}${C.reset}`);
+                logProgress(processed, ids.length, successCount, failedCount);
                 job.results[oldId] = { status: 'Success', newId: parseInt(newId, 10) };
             } catch (error) {
-                console.error(`  FAILED: ${oldId} - ${error.message}`);
-                if (error.response && error.response.data) {
-                    let errData = error.response.data;
-                    if (errData instanceof Buffer || errData instanceof ArrayBuffer) {
-                        errData = Buffer.from(errData).toString('utf8');
-                    } else if (typeof errData === 'object') {
-                        errData = JSON.stringify(errData);
-                    } else {
-                        errData = errData.toString();
-                    }
-                    console.error(`  Response: ${errData}`);
-                }
+                failedCount++;
+                processed++;
+                const cat = categorizeError(error.message);
+                errorSummary[cat.reason] = (errorSummary[cat.reason] || 0) + 1;
+                logError(`${oldId} -- ${cat.icon} ${cat.reason}`);
+                logErrorDetail(error.message);
+                logProgress(processed, ids.length, successCount, failedCount);
                 job.results[oldId] = { status: 'Failed', error: error.message };
             }
+        } catch (error) {
+            failedCount++;
+            processed++;
+            const cat = categorizeError(error.message);
+            errorSummary[cat.reason] = (errorSummary[cat.reason] || 0) + 1;
+            logError(`${oldId} -- ${cat.icon} ${cat.reason}`);
+            logErrorDetail(error.message);
+            logProgress(processed, ids.length, successCount, failedCount);
+            job.results[oldId] = { status: 'Failed', error: error.message };
+        } finally {
+            globalSemaphore.release();
         }
+    }));
 
-        processedCount++;
-        console.log(`  [Progress] ${processedCount}/${ids.length} finished.`);
-    });
+    // Clear progress bar line
+    process.stdout.write('\r' + ' '.repeat(80) + '\r');
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log('');
+    console.log(`  ${C.cyan}${C.bold}+----------------------------------------------+${C.reset}`);
+    console.log(`  ${C.cyan}|${C.reset} ${C.white}${C.bold}Job Complete${C.reset}${C.white} -- ${elapsed}s elapsed${C.reset}                   ${C.cyan}|${C.reset}`);
+    console.log(`  ${C.cyan}+----------------------------------------------+${C.reset}`);
+    logSuccess(`Success: ${successCount}`);
+    if (failedCount > 0) {
+        logError(`Failed:  ${failedCount}`);
+    }
+
+    // Error breakdown
+    if (Object.keys(errorSummary).length > 0) {
+        console.log('');
+        console.log(`  ${C.red}${C.bold}  Error Breakdown:${C.reset}`);
+        for (const [reason, count] of Object.entries(errorSummary).sort((a, b) => b[1] - a[1])) {
+            const cat = categorizeError(reason);
+            console.log(`  ${C.gray}    [${cat.icon}] ${C.reset}${cat.color}${reason}${C.reset}${C.gray}: ${C.white}${C.bold}${count}${C.reset}`);
+        }
+    }
+    console.log(`  ${C.gray}${'-'.repeat(48)}${C.reset}`);
+    console.log('');
 
     job.done = true;
     cleanupJob(job.id);
 }
-
-app.get('/api/asset-type/:id', async (req, res) => {
-    try {
-        const assetId = req.params.id;
-        let typeId = 0;
-
-        const detailsRes = await axios.get(`https://economy.roblox.com/v2/assets/${assetId}/details`, {
-            headers: { 'User-Agent': 'Roblox/WinInet' },
-            validateStatus: () => true
-        });
-        
-        if (detailsRes.status === 200 && detailsRes.data && detailsRes.data.AssetTypeId) {
-            typeId = detailsRes.data.AssetTypeId;
-        } else {
-            try {
-                const buffer = await downloadAsset(assetId);
-                const str = buffer.toString('utf8', 0, 500);
-                if (str.includes('<Item class="Animation"') || str.includes('<Item class="KeyframeSequence"')) {
-                    typeId = 24;
-                } else if (str.includes('<Item class="SpecialMesh"') || str.includes('version 1.00') || str.includes('version 2.00')) {
-                    typeId = 4;
-                } else if (buffer.length > 4 && buffer.slice(0, 4).toString('ascii') === 'OggS') {
-                    typeId = 3;
-                } else if (str.includes('PNG') || str.includes('JFIF') || str.includes('<Item class="Decal"')) {
-                    typeId = 1;
-                }
-            } catch(e) {
-                // Ignore download errors for type check
-            }
-        }
-        res.json({ assetTypeId: typeId });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
 
 app.post('/api/replace', (req, res) => {
     const { ids, assetType, creatorType, creatorId } = req.body;
@@ -373,18 +590,21 @@ app.post('/api/replace', (req, res) => {
         return res.status(400).json({ error: 'Invalid ids array' });
     }
 
-    console.log(`\n========== ${type} Reupload Request (${ids.length} assets) ==========`);
+    console.log('');
+    console.log(`  ${C.cyan}${C.bold}========== ${type} Reupload Request (${ids.length} assets) ==========${C.reset}`);
 
     const job = { id: crypto.randomUUID(), results: {}, done: false, total: ids.length };
     jobs.set(job.id, job);
 
     res.json({ jobId: job.id, total: ids.length });
 
-    processReplaceJob(job, ids, type, creatorType, creatorId).catch(error => {
-        console.error(`Job ${job.id} crashed: ${error.message}`);
-        job.done = true;
-        cleanupJob(job.id);
-    });
+    processReplaceJob(job, ids, type, creatorType, creatorId)
+        .catch(error => {
+            logError(`Job ${job.id} crashed: ${error.message}`);
+            logErrorDetail(error.stack ? error.stack.split('\n')[1] : '');
+            job.done = true;
+            cleanupJob(job.id);
+        });
 });
 
 app.get('/api/replace/status/:jobId', (req, res) => {
@@ -396,22 +616,33 @@ app.get('/api/replace/status/:jobId', (req, res) => {
 });
 
 const PORT = 3000;
-const server = app.listen(PORT, '127.0.0.1', () => {
-    console.log(`m-spoofer Server running on http://127.0.0.1:${PORT}`);
-    console.log(`Credit: mt7s m-project`);
-    console.log(`Supported: Animation, Mesh, Audio, Image`);
-    console.log(`Parallel downloads: ${DOWNLOAD_CONCURRENCY} at a time`);
-    console.log(`Waiting for plugin requests...`);
-});
 
-server.on('error', (err) => {
-    console.error('\n[ERROR] Server failed to start:', err.message);
-    if (err.code === 'EADDRINUSE') {
-        console.error(`=> Port ${PORT} is already in use by another program!`);
-        console.error(`=> Please close any other running instances of the server before starting a new one.`);
-    }
-    process.exit(1);
-});
+async function startServer() {
+    await playMAnimation();
 
-// Prevent Node.js from exiting immediately
-setInterval(() => { }, 1000 * 60 * 60);
+    const server = app.listen(PORT, '127.0.0.1', () => {
+        logSuccess(`Server running on ${C.bold}http://127.0.0.1:${PORT}${C.reset}`);
+        console.log('');
+        logInfo(`Supported: ${C.bold}Animation${C.reset}${C.white}, ${C.bold}Mesh${C.reset}${C.white}, ${C.bold}Audio${C.reset}${C.white}, ${C.bold}Image${C.reset}`);
+        logInfo(`Concurrency: ${C.bold}${DOWNLOAD_CONCURRENCY}${C.reset}${C.white} parallel operations`);
+        if (!COOKIE) logWarn('ROBLOSECURITY cookie not set -- some assets may fail to download');
+        console.log('');
+        console.log(`  ${C.green}${C.bold}  [*] ${C.reset}${C.green}Ready -- Waiting for plugin requests...${C.reset}`);
+        console.log(`  ${C.gray}${'-'.repeat(48)}${C.reset}`);
+        console.log('');
+    });
+
+    server.on('error', (err) => {
+        console.log('');
+        logError(`Server failed to start: ${err.message}`);
+        if (err.code === 'EADDRINUSE') {
+            logError(`Port ${PORT} is already in use!`);
+            logWarn(`Close other running instances first.`);
+        }
+        process.exit(1);
+    });
+}
+
+startServer();
+
+setInterval(() => {}, 1000 * 60 * 60);
