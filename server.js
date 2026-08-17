@@ -1,4 +1,4 @@
-// m-spoofer Server — Credit: mt7s m-project
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -7,9 +7,7 @@ const FormData = require('form-data');
 const https = require('https');
 const crypto = require('crypto');
 
-// ===================================================
-// Terminal Colors
-// ===================================================
+
 const C = {
     reset: '\x1b[0m',
     bold: '\x1b[1m',
@@ -29,10 +27,7 @@ const C = {
     grayLight: '\x1b[37m',
 };
 
-// ===================================================
-// 3D "M" Rotation Frames (ASCII-safe block art)
-// Each frame is exactly 14 chars wide, 7 lines tall
-// ===================================================
+
 const M_FRAMES = [
     [ // Front
         ' ##       ## ',
@@ -121,7 +116,7 @@ async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function playMAnimation() {
     const total = M_FRAMES.length;
 
-    process.stdout.write('\x1b[?25l'); // hide cursor
+    process.stdout.write('\x1b[?25l');
     for (let i = 0; i < LINES_PER_FRAME; i++) process.stdout.write('\n');
 
     for (let rot = 0; rot < 3; rot++) {
@@ -140,9 +135,8 @@ async function playMAnimation() {
         }
     }
 
-    process.stdout.write('\x1b[?25h'); // show cursor
+    process.stdout.write('\x1b[?25h');
 
-    // Final splash
     process.stdout.write(`\x1b[${LINES_PER_FRAME}A`);
     process.stdout.write('\n\n');
     const pal = PALETTES[0];
@@ -151,7 +145,6 @@ async function playMAnimation() {
     }
     process.stdout.write('\x1b[K\n');
 
-    // Branding box
     const W = 42;
     const line = '-'.repeat(W);
     console.log(`  ${C.cyan}${C.bold}+${line}+${C.reset}`);
@@ -161,9 +154,6 @@ async function playMAnimation() {
     console.log('\x1b[K');
 }
 
-// ===================================================
-// Logging Helpers
-// ===================================================
 
 function logSuccess(msg) {
     console.log(`  ${C.green}${C.bold} + ${C.reset}${C.green}${msg}${C.reset}`);
@@ -545,7 +535,6 @@ async function processReplaceJob(job, ids, type, cType, cId) {
         }
     }));
 
-    // Clear progress bar line
     process.stdout.write('\r' + ' '.repeat(80) + '\r');
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -558,7 +547,6 @@ async function processReplaceJob(job, ids, type, cType, cId) {
         logError(`Failed:  ${failedCount}`);
     }
 
-    // Error breakdown
     if (Object.keys(errorSummary).length > 0) {
         console.log('');
         console.log(`  ${C.red}${C.bold}  Error Breakdown:${C.reset}`);
